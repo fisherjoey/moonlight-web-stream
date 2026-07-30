@@ -64,6 +64,11 @@ function engineResolver(): Plugin {
 
 export default defineConfig({
     plugins: [engineResolver(), react(), tailwindcss()],
+    // The engine's worker pipeline resolves pipes by class name at runtime;
+    // minification must not rename them.
+    esbuild: {
+        keepNames: true,
+    },
     worker: {
         format: "es",
         plugins: () => [engineResolver()],

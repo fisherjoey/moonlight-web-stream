@@ -58,6 +58,10 @@ function StreamPage() {
                     setStatus(info.message)
                 } else if (info.type === "addDebugLine") {
                     console.log("[stream]", info.line)
+                    // Fatal engine errors must reach the user, not just the console
+                    if (info.additional?.type === "fatal" || info.additional?.type === "fatalDescription") {
+                        setStatus(info.line)
+                    }
                 }
             })
 
