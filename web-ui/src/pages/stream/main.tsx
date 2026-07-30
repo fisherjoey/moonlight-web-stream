@@ -4,6 +4,7 @@ import "../../styles.css"
 import { Api, createApi, ensureAuthenticated, bootstrapRole } from "../../lib/api"
 import { Stream, InfoEvent } from "@engine/stream/index"
 import { globalDefaultSettings } from "@engine/component/settings_menu"
+import { requestKeyboardLock } from "@engine/iframe"
 
 const api: Api = createApi()
 
@@ -17,6 +18,7 @@ function StreamPage() {
     const streamRef = useRef<Stream | null>(null)
     const [status, setStatus] = useState("Connecting…")
     const [videoReady, setVideoReady] = useState(false)
+    const [pointerLocked, setPointerLocked] = useState(false)
 
     useEffect(() => {
         if (!containerRef.current || Number.isNaN(hostId) || Number.isNaN(appId)) {
@@ -97,6 +99,22 @@ function StreamPage() {
         container.addEventListener("wheel", onWheel, { passive: false })
         container.addEventListener("contextmenu", onContextMenu)
 
+        // Mouse-lock state: while the pointer is locked, feed the engine
+        // relative deltas (game-style aim); otherwise absolute positions.
+        const onPointerLockChange = () => {
+            const locked = document.pointerLockElement === container
+            setPointerLocked(locked)
+            const streamInput = input()
+            if (streamInput) {
+                streamInput.setConfig({ ...streamInput.getConfig(), mouseMode: locked ? "relative" : "follow" })
+            }
+        }
+        document.addEventListener("pointerlockchange", onPointerLockChange)
+
+        // Don't leave keys held on the host when the tab loses focus
+        const onBlur = () => input()?.raiseAllKeys()
+        window.addEventListener("blur", onBlur)
+
         return () => {
             cancelled = true
             document.removeEventListener("keydown", onKeyDown)
@@ -106,6 +124,8 @@ function StreamPage() {
             container.removeEventListener("mousemove", onMouseMove)
             container.removeEventListener("wheel", onWheel)
             container.removeEventListener("contextmenu", onContextMenu)
+            document.removeEventListener("pointerlockchange", onPointerLockChange)
+            window.removeEventListener("blur", onBlur)
             if (stream) {
                 stream.stop().catch(() => {})
                 stream.unmount(container)
@@ -113,6 +133,24 @@ function StreamPage() {
             }
         }
     }, [])
+
+    async function toggleFullscreen() {
+        if (document.fullscreenElement) {
+            await document.exitFullscreen().catch(() => {})
+            return
+        }
+        try {
+            await document.body.requestFullscreen({ navigationUI: "hide" })
+            // Capture Esc/Meta so games receive them (hold Esc exits fullscreen)
+            await requestKeyboardLock().catch(() => {})
+        } catch (e) {
+            console.warn("fullscreen failed", e)
+        }
+    }
+
+    function lockMouse() {
+        containerRef.current?.requestPointerLock()
+    }
 
     return (
         <div className="fixed inset-0 bg-abyss">
@@ -123,9 +161,19 @@ function StreamPage() {
                     {status}
                 </div>
             )}
-            <a href="/" className="absolute top-4 left-4 rounded-lg bg-panel/80 border border-line px-3 py-1.5 text-sm text-fog opacity-30 hover:opacity-100 transition">
-                ← Exit
-            </a>
+            <div className="absolute top-0 inset-x-0 h-14 group">
+                <div className="absolute top-4 left-4 flex gap-2 opacity-0 group-hover:opacity-100 transition">
+                    <a href="/" className="rounded-lg bg-panel/80 border border-line px-3 py-1.5 text-sm text-fog hover:text-snow">
+                        ← Exit
+                    </a>
+                    <button onClick={toggleFullscreen} className="rounded-lg bg-panel/80 border border-line px-3 py-1.5 text-sm text-fog hover:text-snow">
+                        ⛶ Fullscreen
+                    </button>
+                    <button onClick={lockMouse} className="rounded-lg bg-panel/80 border border-line px-3 py-1.5 text-sm text-fog hover:text-snow">
+                        {pointerLocked ? "Mouse locked (Esc releases)" : "🖱 Lock mouse"}
+                    </button>
+                </div>
+            </div>
         </div>
     )
 }
