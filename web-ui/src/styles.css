@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+@theme {
+    --color-abyss: #07080c;
+    --color-panel: #0e1017;
+    --color-panel-2: #151827;
+    --color-line: #232637;
+    --color-fog: #8b90a8;
+    --color-snow: #e8eaf2;
+    --color-moon: #7aa2ff;
+    --color-moon-2: #9d7aff;
+}
+
+html, body {
+    background: var(--color-abyss);
+    color: var(--color-snow);
+    font-family: Inter, system-ui, sans-serif;
+    margin: 0;
+}
+
+/* Engine notification list (vendored engine appends notifications here) */
+#notification-list {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+#notification-list > * {
+    background: var(--color-panel-2);
+    border: 1px solid var(--color-line);
+    color: var(--color-snow);
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+    max-width: 22rem;
+}

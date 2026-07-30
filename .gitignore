@@ -16,3 +16,6 @@ web/api_bindings.ts
 server
 
 /.idea
+
+web-ui/node_modules/
+server/
