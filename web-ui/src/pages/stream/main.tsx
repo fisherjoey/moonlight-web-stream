@@ -215,6 +215,12 @@ function StreamPage() {
             if (phaseRef.current.kind === "ended") {
                 return
             }
+            // Suppress browser shortcuts while the game has the keyboard
+            // (Ctrl+W, Ctrl+T, "/" quick-find...). Exceptions match the old
+            // UI: Ctrl+Shift+V pasting and F11 manual fullscreen stay native.
+            if (!(e.shiftKey && e.ctrlKey && e.code === "KeyV") && e.code !== "F11") {
+                e.preventDefault()
+            }
             input()?.onKeyDown(e)
         }
         // Key releases are always forwarded so no key stays held on the host
