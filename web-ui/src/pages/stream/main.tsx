@@ -37,13 +37,17 @@ function StreamPage() {
             }
 
             const settings = globalDefaultSettings()
-            settings.videoSize = "native"
+            // Native-ish size, aligned down to macroblock (16px) boundaries:
+            // odd encode sizes make some hardware decoders (Chrome/D3D11)
+            // mishandle the crop padding, which shows up as green artifacts.
+            settings.videoSize = "custom"
             if (transportOverride === "websocket" || transportOverride === "webrtc") {
                 settings.dataTransport = transportOverride
             }
 
             const width = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0)
             const height = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
+            settings.videoSizeCustom = { width: width & ~15, height: height & ~15 }
 
             stream = new Stream(api, hostId, appId, settings, [width, height], role.permissions)
             streamRef.current = stream
