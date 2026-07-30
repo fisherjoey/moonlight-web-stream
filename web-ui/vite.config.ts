@@ -106,6 +106,7 @@ export default defineConfig({
             input: {
                 index: resolve(HERE, "index.html"),
                 stream: resolve(HERE, "stream.html"),
+                admin: resolve(HERE, "admin.html"),
             },
         },
     },

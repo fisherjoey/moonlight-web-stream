@@ -62,3 +62,30 @@ export async function listApps(api: Api, hostId: number): Promise<App[]> {
 
 export { apiGetHost, apiPostPair, apiPostPairCancel }
 export type { Api, App, DetailedHost, UndetailedHost }
+
+// ---- Admin surface (admin.html) — additive re-exports only ----
+export {
+    apiGetUser,
+    apiGetUsers,
+    apiPostUser,
+    apiPatchUser,
+    apiDeleteUser,
+    apiGetRole,
+    apiGetRoles,
+    apiPostRole,
+    apiPatchRole,
+    apiDeleteRole,
+    apiLogout,
+    FetchError,
+} from "@engine/api"
+export type {
+    DetailedRole,
+    DetailedUser,
+    UndetailedRole,
+    RoleType,
+    StreamPermissions,
+    PostUserRequest,
+    PatchUserRequest,
+    PostRoleRequest,
+    PatchRoleRequest,
+} from "@engine/api_bindings"
