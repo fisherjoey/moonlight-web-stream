@@ -79,13 +79,18 @@ export function sameQuality(a: QualityDraft, b: QualityDraft): boolean {
 }
 
 /**
- * Browser viewport size aligned down to macroblock (16px) boundaries: odd
+ * "Native" encode size, aligned down to macroblock (16px) boundaries: odd
  * encode sizes make some hardware decoders (Chrome/D3D11) mishandle the
  * crop padding, which shows up as green artifacts.
+ *
+ * Sized from the SCREEN rather than the window so that entering fullscreen
+ * fills the display exactly instead of letterboxing (the window is shorter
+ * than the screen by the browser chrome). In a window the full frame just
+ * scales down, which is what every native Moonlight client does too.
  */
 export function alignedViewportSize(): { width: number; height: number } {
-    const width = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0)
-    const height = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
+    const width = window.screen.width || Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0)
+    const height = window.screen.height || Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
     return { width: width & ~15, height: height & ~15 }
 }
 
