@@ -109,3 +109,25 @@ export {
     FetchError,
 }
 export type { Api, App, DetailedHost, DetailedRole, DetailedUser, PairFailReason, UndetailedHost }
+
+// ---- Admin surface (admin.html) — additive re-exports only ----
+export {
+    apiGetUsers,
+    apiPostUser,
+    apiPatchUser,
+    apiDeleteUser,
+    apiGetRole,
+    apiGetRoles,
+    apiPostRole,
+    apiPatchRole,
+    apiDeleteRole,
+} from "@engine/api"
+export type {
+    UndetailedRole,
+    RoleType,
+    StreamPermissions,
+    PostUserRequest,
+    PatchUserRequest,
+    PostRoleRequest,
+    PatchRoleRequest,
+} from "@engine/api_bindings"
