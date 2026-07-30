@@ -113,7 +113,7 @@ function StreamPage() {
     return (
         <div className="fixed inset-0 bg-abyss">
             <div ref={containerRef} tabIndex={0}
-                className="absolute inset-0 outline-none [&_video]:w-full [&_video]:h-full [&_canvas]:w-full [&_canvas]:h-full" />
+                className={`absolute inset-0 outline-none [&_video]:w-full [&_video]:h-full [&_canvas]:w-full [&_canvas]:h-full ${videoReady ? "cursor-none" : ""}`} />
             {!videoReady && (
                 <div className="absolute top-6 left-1/2 -translate-x-1/2 rounded-full bg-panel/90 border border-line px-4 py-1.5 text-sm text-fog">
                     {status}
