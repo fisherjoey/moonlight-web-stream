@@ -38,13 +38,24 @@ export const TRANSPORT_CHOICES: Array<{ value: TransportType; label: string }> =
     { value: "websocket", label: "WebSocket" },
 ]
 
-/** The quality-relevant slice of Settings the in-stream menu edits. */
+/**
+ * The quality-relevant slice of Settings the in-stream menu edits.
+ *
+ * `hdr` and `playAudioLocal` ride along here (not just bitrate/fps/codec/
+ * transport) because both require restarting the Stream to take effect —
+ * same "Apply & reconnect" gating as the rest (see applyQuality in
+ * main.tsx), mirroring the old sidebar settings menu (web/component/
+ * settings_menu.ts StreamSettingsComponent) where they're plain fields on
+ * the same Settings object.
+ */
 export type QualityDraft = {
     bitrateKbps: number
     resolution: ResolutionChoice
     fps: number
     codec: StreamCodec
     transport: TransportType
+    hdr: boolean
+    playAudioLocal: boolean
 }
 
 export function qualityFromSettings(settings: Settings): QualityDraft {
@@ -60,6 +71,8 @@ export function qualityFromSettings(settings: Settings): QualityDraft {
         fps: settings.fps,
         codec: settings.videoCodec,
         transport: settings.dataTransport,
+        hdr: settings.hdr,
+        playAudioLocal: settings.playAudioLocal,
     }
 }
 
@@ -70,12 +83,54 @@ export function applyQualityToSettings(base: Settings, draft: QualityDraft): Set
     next.videoCodec = draft.codec
     next.dataTransport = draft.transport
     next.videoSize = draft.resolution === "native" ? "native" : draft.resolution
+    next.hdr = draft.hdr
+    next.playAudioLocal = draft.playAudioLocal
     return next
 }
 
 export function sameQuality(a: QualityDraft, b: QualityDraft): boolean {
     return a.bitrateKbps === b.bitrateKbps && a.resolution === b.resolution &&
-        a.fps === b.fps && a.codec === b.codec && a.transport === b.transport
+        a.fps === b.fps && a.codec === b.codec && a.transport === b.transport &&
+        a.hdr === b.hdr && a.playAudioLocal === b.playAudioLocal
+}
+
+/**
+ * The "Input" settings group (mouse scroll mode + controller inversion).
+ * Unlike QualityDraft, these apply LIVE via StreamInput.setConfig (see
+ * StreamInputConfig) in addition to being persisted — no reconnect needed,
+ * matching how the old sidebar's mouse/touch mode selects called
+ * `app.setInputConfig(config)` immediately (web/stream.ts ViewerSidebar).
+ */
+export type InputDraft = {
+    mouseScrollMode: Settings["mouseScrollMode"]
+    invertAB: boolean
+    invertXY: boolean
+}
+
+export const DEFAULT_INPUT_DRAFT: InputDraft = {
+    mouseScrollMode: "highres",
+    invertAB: false,
+    invertXY: false,
+}
+
+export const MOUSE_SCROLL_MODE_CHOICES: Array<{ value: Settings["mouseScrollMode"]; label: string }> = [
+    { value: "highres", label: "High-res" },
+    { value: "normal", label: "Normal" },
+]
+
+export function inputFromSettings(settings: Settings): InputDraft {
+    return {
+        mouseScrollMode: settings.mouseScrollMode,
+        invertAB: settings.controllerConfig.invertAB,
+        invertXY: settings.controllerConfig.invertXY,
+    }
+}
+
+export function applyInputDraftToSettings(base: Settings, draft: InputDraft): Settings {
+    const next: Settings = structuredClone(base)
+    next.mouseScrollMode = draft.mouseScrollMode
+    next.controllerConfig = { ...next.controllerConfig, invertAB: draft.invertAB, invertXY: draft.invertXY }
+    return next
 }
 
 /**
