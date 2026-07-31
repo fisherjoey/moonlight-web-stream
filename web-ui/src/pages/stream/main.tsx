@@ -7,8 +7,11 @@ import { requestKeyboardLock } from "@engine/iframe"
 import type { Settings } from "@engine/component/settings_menu"
 import type { StreamPermissions } from "@engine/api_bindings"
 import type { StreamStatsData } from "@engine/stream/stats"
+import type { ScreenKeyboardSetVisibleEvent } from "@engine/stream/input"
 import { OverlayMenu } from "./OverlayMenu"
 import { StatsHud } from "./StatsHud"
+import { ScreenKeyboard, type ScreenKeyboardHandle } from "./ScreenKeyboard"
+import { attachTouchInput } from "./touch"
 import { ConnectingOverlay, EndScreen } from "./screens"
 import {
     QUALITY_QUERY_KEYS,
@@ -58,6 +61,7 @@ function StreamPage() {
     const streamRef = useRef<Stream | null>(null)
     const settingsRef = useRef<Settings | null>(null)
     const logsRef = useRef<string[]>([])
+    const screenKeyboardRef = useRef<ScreenKeyboardHandle>(null)
 
     const [phase, setPhase] = useState<Phase>(
         paramsInvalid
@@ -130,6 +134,18 @@ function StreamPage() {
             setPhase(prev => prev.kind === "ended" ? prev : { kind: "ended", reason, message })
         }
 
+        // Three-finger touch gesture (engine-detected) toggles the on-screen keyboard
+        const onScreenKeyboardVisible = (event: ScreenKeyboardSetVisibleEvent) => {
+            const keyboard = screenKeyboardRef.current
+            if (keyboard && event.detail.visible !== keyboard.isVisible()) {
+                if (event.detail.visible) {
+                    keyboard.show()
+                } else {
+                    keyboard.hide()
+                }
+            }
+        }
+
         ;(async () => {
             if (!(await ensureAuthenticated(api))) {
                 window.location.href = "/"
@@ -150,6 +166,8 @@ function StreamPage() {
 
             stream = new Stream(api, hostId, appId, engineSettings, [viewport.width, viewport.height], role.permissions)
             streamRef.current = stream
+
+            stream.getInput().addScreenKeyboardVisibleEvent(onScreenKeyboardVisible)
 
             stream.addInfoListener((event: InfoEvent) => {
                 const info = event.detail
@@ -319,6 +337,22 @@ function StreamPage() {
         }
         gamepadRaf = window.requestAnimationFrame(pollGamepads)
 
+        // -- Touch: forwarding + the rAF-driven onTouchUpdate loop the engine's
+        // gesture prediction (drag/scroll/screen-keyboard/long-press) depends on
+        const cleanupTouch = attachTouchInput(container, {
+            getInput: input,
+            getRect: rect,
+            canForward,
+            isMenuOpen: () => menuOpenRef.current,
+            closeMenu,
+            isKeyboardVisible: () => screenKeyboardRef.current?.isVisible() ?? false,
+            onUserInteraction: () => {
+                streamRef.current?.getVideoRenderer()?.onUserInteraction()
+                streamRef.current?.getAudioPlayer()?.onUserInteraction()
+            },
+            focusContainer: () => container.focus(),
+        })
+
         return () => {
             cancelled = true
             if (hintTimer != null) {
@@ -337,6 +371,7 @@ function StreamPage() {
             window.removeEventListener("gamepadconnected", onGamepadConnect)
             window.removeEventListener("gamepaddisconnected", onGamepadDisconnect)
             window.cancelAnimationFrame(gamepadRaf)
+            cleanupTouch()
             if (stream) {
                 stream.stop().catch(() => {})
                 stream.unmount(container)
@@ -374,6 +409,8 @@ function StreamPage() {
     const getStatsData = useCallback((): StreamStatsData | null => {
         return streamRef.current?.getStats()?.getCurrentStats() ?? null
     }, [])
+
+    const getInput = useCallback(() => streamRef.current?.getInput(), [])
 
     async function applyQuality(draft: QualityDraft) {
         const base = settingsRef.current
@@ -430,6 +467,8 @@ function StreamPage() {
 
             <StatsHud visible={live && statsVisible} getStats={getStatsData}
                 meta={{ transportName, targetBitrateKbps: activeQuality?.bitrateKbps ?? 0 }} />
+
+            <ScreenKeyboard ref={screenKeyboardRef} getInput={getInput} active={live && !menuOpen} />
 
             {/* Transient hint once the stream is up */}
             {live && showHint && !menuOpen && (
