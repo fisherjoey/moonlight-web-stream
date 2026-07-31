@@ -295,7 +295,13 @@ function StreamPage() {
             // Suppress browser shortcuts while the game has the keyboard
             // (Ctrl+W, Ctrl+T, "/" quick-find...). Exceptions match the old
             // UI: Ctrl+Shift+V pasting and F11 manual fullscreen stay native.
-            if (!(e.shiftKey && e.ctrlKey && e.code === "KeyV") && e.code !== "F11") {
+            if (e.shiftKey && e.ctrlKey && e.code === "KeyV") {
+                // Native paste flow: don't preventDefault (so the browser
+                // fires the "paste" event below) and don't forward the raw
+                // V keypress to the host — mirrors ViewerApp.onKeyDown.
+                return
+            }
+            if (e.code !== "F11") {
                 e.preventDefault()
             }
             input()?.onKeyDown(e)
@@ -484,6 +490,18 @@ function StreamPage() {
 
     const getInput = useCallback(() => streamRef.current?.getInput(), [])
 
+    async function togglePictureInPicture() {
+        const video = containerRef.current?.querySelector("video")
+        if (!video) {
+            return
+        }
+        if (document.pictureInPictureElement) {
+            await document.exitPictureInPicture().catch(() => {})
+        } else {
+            await video.requestPictureInPicture().catch(() => {})
+        }
+    }
+
     function sendKeycode(keys: number[]) {
         const streamInput = streamRef.current?.getInput()
         if (streamInput) {
@@ -601,6 +619,7 @@ function StreamPage() {
             <OverlayMenu open={menuOpen} onClose={closeMenu}
                 appTitle={appTitle}
                 isFullscreen={isFullscreen} onToggleFullscreen={toggleFullscreen}
+                onPictureInPicture={"pictureInPictureEnabled" in document && document.pictureInPictureEnabled ? togglePictureInPicture : undefined}
                 pointerLocked={pointerLocked} onLockMouse={lockMouse}
                 statsVisible={statsVisible} onToggleStats={toggleStats}
                 activeQuality={activeQuality ?? {

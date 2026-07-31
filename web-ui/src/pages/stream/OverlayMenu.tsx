@@ -92,7 +92,7 @@ function Toggle({ label, on, onChange, disabled, hint }: {
 export function OverlayMenu({
     open, onClose,
     appTitle,
-    isFullscreen, onToggleFullscreen,
+    isFullscreen, onToggleFullscreen, onPictureInPicture,
     pointerLocked, onLockMouse,
     statsVisible, onToggleStats,
     activeQuality, permissions,
@@ -105,6 +105,7 @@ export function OverlayMenu({
     appTitle: string | null
     isFullscreen: boolean
     onToggleFullscreen: () => void
+    onPictureInPicture?: () => void
     pointerLocked: boolean
     onLockMouse: () => void
     statsVisible: boolean
@@ -200,6 +201,11 @@ export function OverlayMenu({
                     <ActionButton onClick={onLockMouse} hint={pointerLocked ? "Esc releases" : undefined}>
                         {pointerLocked ? "Mouse locked" : "Lock mouse"}
                     </ActionButton>
+                    {onPictureInPicture && (
+                        <ActionButton onClick={onPictureInPicture} hint="floating window">
+                            Picture-in-Picture
+                        </ActionButton>
+                    )}
                     <Toggle label="Stats overlay" on={statsVisible} onChange={onToggleStats} />
                 </div>
 
