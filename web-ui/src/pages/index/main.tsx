@@ -7,6 +7,7 @@ import {
     DetailedHost,
     DetailedRole,
     DetailedUser,
+    FetchError,
     UndetailedHost,
     apiDeleteHost,
     apiGetHost,
@@ -22,22 +23,27 @@ import {
     login,
     streamHosts,
 } from "../../lib/api"
+import { getFavoriteIds, toggleFavorite } from "../../lib/favorites"
+import { getRecentIds, recordRecent } from "../../lib/recents"
 import { AddHostModal } from "../../components/AddHostModal"
 import { AppTile } from "../../components/AppTile"
 import { ConfirmModal, ConfirmRequest } from "../../components/ConfirmModal"
 import { ContextMenu, MenuItem, MenuState } from "../../components/ContextMenu"
 import { AddHostTile, HostTile, hostStatus } from "../../components/HostTile"
 import { PairingModal } from "../../components/PairingModal"
+import { ResumeHero } from "../../components/ResumeHero"
 import { MoonSpinner } from "../../components/Spinner"
 import { TileGrid } from "../../components/TileGrid"
-import { Toasts, useToasts } from "../../components/Toasts"
+import { Toasts, ToastAction, useToasts } from "../../components/Toasts"
 import {
     IconArrowLeft,
+    IconClock,
     IconGlobe,
     IconLock,
     IconPlay,
     IconRefresh,
     IconSignOut,
+    IconStar,
     IconTrash,
     IconUser,
     IconZap,
@@ -48,6 +54,20 @@ const api: Api = createApi()
 
 type Phase = "boot" | "login" | "ready"
 type View = { kind: "hosts" } | { kind: "apps"; hostId: number }
+
+/** In-flight (or just-finished) Wake-on-LAN attempt, tracked for one host at a time. */
+type WakeState = {
+    hostId: number
+    hostName: string
+    startedAt: number
+}
+
+const WAKE_POLL_INTERVAL_MS = 3000
+const WAKE_TIMEOUT_MS = 90_000
+
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => window.setTimeout(resolve, ms))
+}
 
 /** Staggered entrance delay for grid tiles, capped so late tiles don't lag. */
 function riseDelay(index: number): React.CSSProperties {
@@ -174,6 +194,11 @@ function AppsView({
     const [apps, setApps] = useState<App[] | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [reloadKey, setReloadKey] = useState(0)
+    // `host.host_id` never changes across an AppsView instance — the caller
+    // remounts it (key={host.host_id}) when the viewed host changes — so
+    // these initializers only re-run per host, which is what we want.
+    const [favoriteIds, setFavoriteIds] = useState<number[]>(() => getFavoriteIds(host.host_id))
+    const [recentIds, setRecentIds] = useState<number[]>(() => getRecentIds(host.host_id))
 
     useEffect(() => {
         let disposed = false
@@ -201,6 +226,22 @@ function AppsView({
 
     const runningId = detail != null && detail.current_game !== 0 ? detail.current_game : null
     const runningApp = runningId != null ? apps?.find(app => app.app_id === runningId) : undefined
+
+    const favoriteApps = apps?.filter(app => favoriteIds.includes(app.app_id)) ?? []
+    const recentApps =
+        apps == null
+            ? []
+            : recentIds
+                  .map(id => apps.find(app => app.app_id === id))
+                  .filter((app): app is App => app != null)
+
+    function toggleFav(app: App) {
+        setFavoriteIds(toggleFavorite(host.host_id, app.app_id))
+    }
+
+    function launch(app: App) {
+        setRecentIds(recordRecent(host.host_id, app.app_id))
+    }
 
     function quit(app: App) {
         requestConfirm({
@@ -286,19 +327,85 @@ function AppsView({
                     No apps are published on this host yet. Add some in Sunshine's web UI.
                 </p>
             ) : (
-                <TileGrid label={`Apps on ${host.name}`}>
-                    {apps.map((app, index) => (
-                        <div key={app.app_id} className="animate-rise" style={riseDelay(index)}>
-                            <AppTile
-                                app={app}
-                                hostId={host.host_id}
-                                running={app.app_id === runningId}
-                                anyRunning={runningId != null}
-                                onQuit={quit}
-                            />
+                <>
+                    {runningApp != null && (
+                        <ResumeHero app={runningApp} hostId={host.host_id} onLaunch={launch} />
+                    )}
+
+                    {favoriteApps.length > 0 && (
+                        <div className="mb-8">
+                            <div
+                                className="mb-3 flex items-center gap-2 text-xs font-semibold tracking-wide
+                                    text-fog uppercase"
+                            >
+                                <IconStar size={13} className="text-ember" fill="currentColor" />
+                                Favorites
+                            </div>
+                            <TileGrid label={`Favorites on ${host.name}`}>
+                                {favoriteApps.map((app, index) => (
+                                    <div key={app.app_id} className="animate-rise" style={riseDelay(index)}>
+                                        <AppTile
+                                            app={app}
+                                            hostId={host.host_id}
+                                            running={app.app_id === runningId}
+                                            anyRunning={runningId != null}
+                                            favorite
+                                            onQuit={quit}
+                                            onToggleFavorite={toggleFav}
+                                            onLaunch={launch}
+                                        />
+                                    </div>
+                                ))}
+                            </TileGrid>
                         </div>
-                    ))}
-                </TileGrid>
+                    )}
+
+                    {favoriteApps.length === 0 && recentApps.length > 0 && (
+                        <div className="mb-8">
+                            <div
+                                className="mb-3 flex items-center gap-2 text-xs font-semibold tracking-wide
+                                    text-fog uppercase"
+                            >
+                                <IconClock size={13} />
+                                Recent
+                            </div>
+                            <TileGrid label={`Recently launched on ${host.name}`} className="gap-3">
+                                {recentApps.map((app, index) => (
+                                    <div key={app.app_id} className="animate-rise" style={riseDelay(index)}>
+                                        <AppTile
+                                            compact
+                                            app={app}
+                                            hostId={host.host_id}
+                                            running={app.app_id === runningId}
+                                            anyRunning={runningId != null}
+                                            favorite={favoriteIds.includes(app.app_id)}
+                                            onQuit={quit}
+                                            onToggleFavorite={toggleFav}
+                                            onLaunch={launch}
+                                        />
+                                    </div>
+                                ))}
+                            </TileGrid>
+                        </div>
+                    )}
+
+                    <TileGrid label={`Apps on ${host.name}`}>
+                        {apps.map((app, index) => (
+                            <div key={app.app_id} className="animate-rise" style={riseDelay(index)}>
+                                <AppTile
+                                    app={app}
+                                    hostId={host.host_id}
+                                    running={app.app_id === runningId}
+                                    anyRunning={runningId != null}
+                                    favorite={favoriteIds.includes(app.app_id)}
+                                    onQuit={quit}
+                                    onToggleFavorite={toggleFav}
+                                    onLaunch={launch}
+                                />
+                            </div>
+                        ))}
+                    </TileGrid>
+                </>
             )}
         </section>
     )
@@ -321,9 +428,13 @@ function Main() {
     const [confirm, setConfirm] = useState<ConfirmRequest | null>(null)
     const [addingHost, setAddingHost] = useState(false)
     const [pairingHost, setPairingHost] = useState<UndetailedHost | null>(null)
+    const [waking, setWaking] = useState<WakeState | null>(null)
 
-    const { toasts, push: toast } = useToasts()
+    const { toasts, push: toast, remove: dismissToast } = useToasts()
     const refreshingRef = useRef(false)
+    // Bumped on every start/cancel so a stale poll loop can tell it's no
+    // longer the current attempt and stop touching state.
+    const wakeTokenRef = useRef(0)
 
     async function refreshHosts() {
         if (refreshingRef.current) {
@@ -391,12 +502,27 @@ function Main() {
         const status = hostStatus(host)
         if (status === "ready") {
             openApps(host)
-        } else if (status === "unpaired") {
-            setPairingHost(host)
-        } else {
-            // Offline: clicking surfaces the actions (wake, refresh, remove).
-            setMenu({ x, y, items: hostMenuItems(host) })
+            return
         }
+        if (status === "unpaired") {
+            setPairingHost(host)
+            return
+        }
+        // Offline. A paired host is the wake-and-play case: promote straight
+        // to sending the WoL packet instead of making the user open a menu
+        // first. Clicking the tile again while it's waking cancels.
+        if (host.paired === "Paired") {
+            if (waking?.hostId === host.host_id) {
+                cancelWake()
+            } else if (waking != null) {
+                toast(`Already waking ${waking.hostName} — cancel that first.`, "info")
+            } else {
+                void startWake(host)
+            }
+            return
+        }
+        // Offline and never paired: nothing to wake into yet, surface actions.
+        setMenu({ x, y, items: hostMenuItems(host) })
     }
 
     async function refreshHost(host: UndetailedHost) {
@@ -407,12 +533,75 @@ function Main() {
         }
     }
 
-    async function wakeHost(host: UndetailedHost) {
+    function cancelWake() {
+        wakeTokenRef.current++
+        setWaking(null)
+    }
+
+    async function startWake(host: UndetailedHost) {
+        if (waking != null) {
+            if (waking.hostId !== host.host_id) {
+                toast(`Already waking ${waking.hostName} — cancel that first.`, "info")
+            }
+            return
+        }
+        const token = ++wakeTokenRef.current
+        setWaking({ hostId: host.host_id, hostName: host.name, startedAt: Date.now() })
+
         try {
             await apiWakeUp(api, { host_id: host.host_id })
-            toast(`Wake-on-LAN packet sent to ${host.name}.`)
-        } catch {
-            toast(`Couldn't send a wake-up packet to ${host.name}.`, "error")
+        } catch (e) {
+            if (wakeTokenRef.current === token) {
+                setWaking(null)
+            }
+            if (e instanceof FetchError && e.getResponse()?.status === 404) {
+                toast(
+                    `${host.name} has no known MAC address — it must have been online at least once ` +
+                        "before it can be woken remotely.",
+                    "error",
+                )
+            } else {
+                toast(`Couldn't send a wake-up packet to ${host.name}.`, "error")
+            }
+            return
+        }
+
+        if (wakeTokenRef.current !== token) {
+            // Cancelled while the request was in flight.
+            return
+        }
+        void pollForWake(host, token)
+    }
+
+    /** Polls apiGetHost every WAKE_POLL_INTERVAL_MS until online, cancelled, or WAKE_TIMEOUT_MS elapses. */
+    async function pollForWake(host: UndetailedHost, token: number) {
+        const deadline = Date.now() + WAKE_TIMEOUT_MS
+
+        while (wakeTokenRef.current === token && Date.now() < deadline) {
+            await sleep(WAKE_POLL_INTERVAL_MS)
+            if (wakeTokenRef.current !== token) {
+                return
+            }
+            try {
+                const fresh = await apiGetHost(api, { host_id: host.host_id })
+                mergeHost(fresh)
+                if (fresh.server_state != null) {
+                    if (wakeTokenRef.current === token) {
+                        setWaking(null)
+                        toast(`${host.name} is awake — opening its library.`)
+                        openApps(host)
+                    }
+                    return
+                }
+            } catch {
+                // Transient — the host may just not be reachable yet. Keep polling.
+            }
+        }
+
+        if (wakeTokenRef.current === token) {
+            setWaking(null)
+            const retry: ToastAction = { label: "Retry", onClick: () => void startWake(host) }
+            toast(`${host.name} didn't come online within 90 seconds.`, "warning", retry)
         }
     }
 
@@ -459,7 +648,12 @@ function Main() {
             items.push({ label: "Pair…", icon: <IconLock size={16} />, onSelect: () => setPairingHost(host) })
         }
         if (status === "offline" && host.paired === "Paired") {
-            items.push({ label: "Wake up", icon: <IconZap size={16} />, onSelect: () => void wakeHost(host) })
+            const isWakingThis = waking?.hostId === host.host_id
+            items.push({
+                label: isWakingThis ? "Cancel waking" : "Wake up",
+                icon: <IconZap size={16} />,
+                onSelect: () => (isWakingThis ? cancelWake() : void startWake(host)),
+            })
         }
         items.push({ label: "Refresh", icon: <IconRefresh size={16} />, onSelect: () => void refreshHost(host) })
         if (isAdmin) {
@@ -524,7 +718,7 @@ function Main() {
         return (
             <>
                 <LoginScreen onDone={() => void bootstrap()} />
-                <Toasts toasts={toasts} />
+                <Toasts toasts={toasts} onDismiss={dismissToast} />
             </>
         )
     }
@@ -607,6 +801,7 @@ function Main() {
                                         onMenu={(target, x, y) =>
                                             setMenu({ x, y, items: hostMenuItems(target) })
                                         }
+                                        wakingSince={waking?.hostId === host.host_id ? waking.startedAt : null}
                                     />
                                 </div>
                             ))}
@@ -648,7 +843,7 @@ function Main() {
                     }}
                 />
             )}
-            <Toasts toasts={toasts} />
+            <Toasts toasts={toasts} onDismiss={dismissToast} />
         </div>
     )
 }

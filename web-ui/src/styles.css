@@ -26,6 +26,7 @@
     --animate-modal-in: modal-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
     --animate-pulse-dot: pulse-dot 2s ease-in-out infinite;
     --animate-spin-slow: spin 2.4s linear infinite;
+    --animate-pulse-ring-ember: pulse-ring-ember 1.8s ease-in-out infinite;
 }
 
 @keyframes rise {
@@ -57,6 +58,21 @@
     }
     50% {
         box-shadow: 0 0 0 6px --alpha(var(--color-moon) / 0%);
+    }
+}
+
+/* Wake-on-LAN in progress: a slow amber breath around the whole tile. */
+@keyframes pulse-ring-ember {
+    0%,
+    100% {
+        box-shadow:
+            0 0 0 1px --alpha(var(--color-ember) / 45%),
+            0 0 22px --alpha(var(--color-ember) / 20%);
+    }
+    50% {
+        box-shadow:
+            0 0 0 3px --alpha(var(--color-ember) / 70%),
+            0 0 36px --alpha(var(--color-ember) / 45%);
     }
 }
 

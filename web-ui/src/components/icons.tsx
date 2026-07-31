@@ -144,6 +144,23 @@ export function IconPlus(props: IconProps) {
     )
 }
 
+export function IconStar(props: IconProps) {
+    return (
+        <svg {...base(props)}>
+            <path d="M12 3.4 14.5 9l6.1.7-4.6 4.2 1.3 6-5.3-3-5.3 3 1.3-6-4.6-4.2L9.5 9 12 3.4Z" />
+        </svg>
+    )
+}
+
+export function IconClock(props: IconProps) {
+    return (
+        <svg {...base(props)}>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v5.5l3.5 2" />
+        </svg>
+    )
+}
+
 export function IconArrowLeft(props: IconProps) {
     return (
         <svg {...base(props)}>
