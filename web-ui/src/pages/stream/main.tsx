@@ -302,6 +302,23 @@ function StreamPage() {
         const onBlur = () => input()?.raiseAllKeys()
         window.addEventListener("blur", onBlur)
 
+        // -- Gamepads: connect events + rAF polling (mirrors the old UI)
+        const onGamepadConnect = (e: GamepadEvent) => input()?.onGamepadConnect(e.gamepad)
+        const onGamepadDisconnect = (e: GamepadEvent) => input()?.onGamepadDisconnect(e)
+        window.addEventListener("gamepadconnected", onGamepadConnect)
+        window.addEventListener("gamepaddisconnected", onGamepadDisconnect)
+        for (const gamepad of navigator.getGamepads()) {
+            if (gamepad != null) {
+                input()?.onGamepadConnect(gamepad)
+            }
+        }
+        let gamepadRaf = 0
+        const pollGamepads = () => {
+            input()?.onGamepadUpdate()
+            gamepadRaf = window.requestAnimationFrame(pollGamepads)
+        }
+        gamepadRaf = window.requestAnimationFrame(pollGamepads)
+
         return () => {
             cancelled = true
             if (hintTimer != null) {
@@ -317,6 +334,9 @@ function StreamPage() {
             container.removeEventListener("contextmenu", onContextMenu)
             document.removeEventListener("pointerlockchange", onPointerLockChange)
             window.removeEventListener("blur", onBlur)
+            window.removeEventListener("gamepadconnected", onGamepadConnect)
+            window.removeEventListener("gamepaddisconnected", onGamepadDisconnect)
+            window.cancelAnimationFrame(gamepadRaf)
             if (stream) {
                 stream.stop().catch(() => {})
                 stream.unmount(container)
