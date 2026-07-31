@@ -20,3 +20,4 @@ server
 web-ui/node_modules/
 server/
 static
+.claude/
