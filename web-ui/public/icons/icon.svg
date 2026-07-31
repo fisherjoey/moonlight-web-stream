@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+    <title>Moonlight Web</title>
+    <defs>
+        <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#7aa2ff" stop-opacity="0.5" />
+            <stop offset="55%" stop-color="#7aa2ff" stop-opacity="0.14" />
+            <stop offset="100%" stop-color="#7aa2ff" stop-opacity="0" />
+        </radialGradient>
+    </defs>
+    <!--
+      Opaque edge-to-edge background + a crescent kept within the ~80%
+      "safe zone" circle (radius <= 205px of a 512px canvas) so this same
+      file works for both `any` and `maskable` manifest icon purposes.
+    -->
+    <rect width="512" height="512" fill="#07080c" />
+    <circle cx="256" cy="256" r="200" fill="url(#halo)" />
+    <!-- MoonMark glyph (web-ui/src/components/icons.tsx), scaled 12.5x from
+         its native 32x32 viewBox and centered on the 512x512 canvas. -->
+    <g transform="translate(56 56) scale(12.5)">
+        <path
+            d="M21.5 4.5a12.4 12.4 0 1 0 6 21.6A13.4 13.4 0 0 1 21.5 4.5Z"
+            fill="#7aa2ff"
+        />
+        <circle cx="16" cy="16" r="15" fill="none" stroke="#7aa2ff" stroke-opacity="0.18" />
+    </g>
+</svg>
