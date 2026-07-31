@@ -13,11 +13,16 @@ import { StatsHud } from "./StatsHud"
 import { ScreenKeyboard, type ScreenKeyboardHandle } from "./ScreenKeyboard"
 import { attachTouchInput } from "./touch"
 import { ConnectingOverlay, EndScreen } from "./screens"
+import { sendKeyCombo } from "./keycodes"
 import {
+    DEFAULT_INPUT_DRAFT,
+    InputDraft,
     QUALITY_QUERY_KEYS,
     QualityDraft,
     alignedViewportSize,
+    applyInputDraftToSettings,
     applyQualityToSettings,
+    inputFromSettings,
     loadStreamSettings,
     persistStreamSettings,
     qualityFromSettings,
@@ -80,6 +85,14 @@ function StreamPage() {
     const [showHint, setShowHint] = useState(false)
     const [edgeHot, setEdgeHot] = useState(false)
     const [, setLogVersion] = useState(0)
+    const [inputDraft, setInputDraft] = useState<InputDraft | null>(null)
+    const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false)
+    // Auto-fullscreen-on-start: armed once live (see the effect below), then
+    // consumed by the first mouse gesture — mirrors ViewerApp's
+    // fullscreenOnNextInteractionArmed/consumeAutoFullscreenInteraction in
+    // the old UI (web/stream.ts), since requestFullscreen() needs a user
+    // gesture and can't just be called on load.
+    const fullscreenArmedRef = useRef(false)
 
     // Refs mirroring state that raw DOM handlers need synchronously
     const phaseRef = useRef(phase)
@@ -106,10 +119,56 @@ function StreamPage() {
     }, [menuOpen])
 
     useEffect(() => {
-        const onFullscreenChange = () => setIsFullscreen(document.fullscreenElement != null)
+        const onFullscreenChange = () => {
+            const fs = document.fullscreenElement != null
+            setIsFullscreen(fs)
+            if (fs) {
+                // Reached fullscreen (auto or manual) — disarm the auto-fullscreen prompt.
+                fullscreenArmedRef.current = false
+                setShowFullscreenPrompt(false)
+            }
+        }
         document.addEventListener("fullscreenchange", onFullscreenChange)
         return () => document.removeEventListener("fullscreenchange", onFullscreenChange)
     }, [])
+
+    // Once settings are loaded (activeQuality becomes non-null alongside
+    // settingsRef.current in the connection effect below), seed the Input
+    // settings group's live-editable draft from them.
+    useEffect(() => {
+        if (activeQuality && settingsRef.current) {
+            setInputDraft(inputFromSettings(settingsRef.current))
+        }
+    }, [activeQuality])
+
+    // Auto-fullscreen-on-start (see fullscreenArmedRef above): arm once the
+    // stream goes live, then consume the next mouse gesture. The listener is
+    // registered on `document` with `capture: true`, which always runs
+    // before the bubble-phase `mousedown` listener the input-forwarding
+    // effect below adds on the container — so when armed, this swallows that
+    // one gesture (preventDefault + stopPropagation) instead of forwarding
+    // it to the game, matching consumeAutoFullscreenInteraction's behavior.
+    useEffect(() => {
+        if (phase.kind !== "live" || !settingsRef.current?.enterFullscreenOnStreamStart || document.fullscreenElement) {
+            return
+        }
+        fullscreenArmedRef.current = true
+        setShowFullscreenPrompt(true)
+
+        const consume = (e: MouseEvent) => {
+            if (!fullscreenArmedRef.current) {
+                return
+            }
+            fullscreenArmedRef.current = false
+            setShowFullscreenPrompt(false)
+            e.preventDefault()
+            e.stopPropagation()
+            void toggleFullscreen()
+        }
+        document.addEventListener("mousedown", consume, { capture: true })
+        return () => document.removeEventListener("mousedown", consume, { capture: true })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [phase.kind])
 
     useEffect(() => {
         if (!containerRef.current || paramsInvalid) {
@@ -243,6 +302,17 @@ function StreamPage() {
         }
         // Key releases are always forwarded so no key stays held on the host
         const onKeyUp = (e: KeyboardEvent) => input()?.onKeyUp(e)
+
+        // Paste-to-host: the engine's StreamInput.onPaste (web/stream/
+        // input.ts) reads event.clipboardData and forwards the text over the
+        // keyboard channel's raw-text path (sendText), independent of the
+        // VK down/up events above. It only fires because onKeyDown (above)
+        // skips e.preventDefault() specifically for Ctrl+Shift+V, letting
+        // the browser run its native paste handling and dispatch this
+        // "paste" event — mirrors ViewerApp.onPaste in the old UI
+        // (web/stream.ts), which relies on the same preventDefault carve-out.
+        const onPaste = (e: ClipboardEvent) => { if (canForward()) input()?.onPaste(e) }
+
         const onMouseDown = (e: MouseEvent) => {
             if (menuOpenRef.current) {
                 // Clicking the video area dismisses the menu without leaking a click
@@ -298,6 +368,7 @@ function StreamPage() {
 
         document.addEventListener("keydown", onKeyDown)
         document.addEventListener("keyup", onKeyUp)
+        document.addEventListener("paste", onPaste)
         container.addEventListener("mousedown", onMouseDown)
         container.addEventListener("mouseup", onMouseUp)
         container.addEventListener("mousemove", onMouseMove)
@@ -361,6 +432,7 @@ function StreamPage() {
             clearEdge()
             document.removeEventListener("keydown", onKeyDown)
             document.removeEventListener("keyup", onKeyUp)
+            document.removeEventListener("paste", onPaste)
             container.removeEventListener("mousedown", onMouseDown)
             container.removeEventListener("mouseup", onMouseUp)
             container.removeEventListener("mousemove", onMouseMove)
@@ -411,6 +483,36 @@ function StreamPage() {
     }, [])
 
     const getInput = useCallback(() => streamRef.current?.getInput(), [])
+
+    function sendKeycode(keys: number[]) {
+        const streamInput = streamRef.current?.getInput()
+        if (streamInput) {
+            sendKeyCombo(streamInput, keys)
+        }
+    }
+
+    // Input settings group (mouse scroll mode + controller inversion):
+    // applies live via StreamInput.setConfig (no reconnect needed, unlike
+    // the Quality section) and persists alongside it.
+    function updateInputConfig(patch: Partial<InputDraft>) {
+        const next: InputDraft = { ...(inputDraft ?? DEFAULT_INPUT_DRAFT), ...patch }
+        setInputDraft(next)
+
+        const streamInput = streamRef.current?.getInput()
+        if (streamInput) {
+            const config = streamInput.getConfig()
+            streamInput.setConfig({
+                ...config,
+                mouseScrollMode: next.mouseScrollMode,
+                controllerConfig: { ...config.controllerConfig, invertAB: next.invertAB, invertXY: next.invertXY },
+            })
+        }
+
+        if (settingsRef.current) {
+            settingsRef.current = applyInputDraftToSettings(settingsRef.current, next)
+            persistStreamSettings(settingsRef.current)
+        }
+    }
 
     async function applyQuality(draft: QualityDraft) {
         const base = settingsRef.current
@@ -471,10 +573,20 @@ function StreamPage() {
             <ScreenKeyboard ref={screenKeyboardRef} getInput={getInput} active={live && !menuOpen} />
 
             {/* Transient hint once the stream is up */}
-            {live && showHint && !menuOpen && (
+            {live && showHint && !menuOpen && !showFullscreenPrompt && (
                 <div className="pointer-events-none absolute bottom-6 left-1/2 z-30 -translate-x-1/2
                     rounded-full border border-line bg-panel/90 px-4 py-1.5 text-xs text-fog backdrop-blur-md">
                     Menu — hover the right edge or press <span className="text-snow">Ctrl+Shift+M</span>
+                </div>
+            )}
+
+            {/* Auto-fullscreen-on-start: one-time prompt while armed (see
+                fullscreenArmedRef above), dismissed by the next click or by
+                actually entering fullscreen. */}
+            {live && showFullscreenPrompt && !menuOpen && (
+                <div className="pointer-events-none absolute bottom-6 left-1/2 z-30 -translate-x-1/2
+                    rounded-full border border-moon/40 bg-panel/90 px-4 py-1.5 text-xs text-fog backdrop-blur-md">
+                    Click to go fullscreen
                 </div>
             )}
 
@@ -493,9 +605,12 @@ function StreamPage() {
                 statsVisible={statsVisible} onToggleStats={toggleStats}
                 activeQuality={activeQuality ?? {
                     bitrateKbps: 10000, resolution: "native", fps: 60, codec: "auto", transport: "auto",
+                    hdr: false, playAudioLocal: false,
                 }}
                 permissions={permissions}
-                onApply={applyQuality} onDisconnect={disconnect} />
+                onApply={applyQuality} onDisconnect={disconnect}
+                onSendKeycode={sendKeycode}
+                inputConfig={inputDraft ?? DEFAULT_INPUT_DRAFT} onInputConfigChange={updateInputConfig} />
         </div>
     )
 }

@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react"
 import type { StreamPermissions } from "@engine/api_bindings"
+import { KEYCODE_COMBOS } from "./keycodes"
 import {
     CODEC_CHOICES,
     FPS_CHOICES,
+    InputDraft,
+    MOUSE_SCROLL_MODE_CHOICES,
     QualityDraft,
     RESOLUTION_CHOICES,
     TRANSPORT_CHOICES,
@@ -61,14 +64,25 @@ function ActionButton({ onClick, children, hint }: {
     )
 }
 
-function Toggle({ label, on, onChange }: { label: string; on: boolean; onChange: () => void }) {
+function Toggle({ label, on, onChange, disabled, hint }: {
+    label: string
+    on: boolean
+    onChange: () => void
+    disabled?: boolean
+    hint?: string
+}) {
     return (
-        <button type="button" onClick={onChange}
-            className="flex w-full items-center justify-between rounded-lg border border-line bg-panel-2/50
+        <button type="button" onClick={onChange} disabled={disabled}
+            className={`flex w-full items-center justify-between rounded-lg border border-line bg-panel-2/50
                 px-3 py-2 text-left text-sm text-snow transition outline-none
-                hover:border-moon/50 hover:bg-panel-2 focus-visible:border-moon">
-            <span>{label}</span>
-            <span className={`relative h-4 w-8 rounded-full transition ${on ? "bg-moon/80" : "bg-line"}`}>
+                ${disabled
+                    ? "cursor-not-allowed opacity-40"
+                    : "hover:border-moon/50 hover:bg-panel-2 focus-visible:border-moon"}`}>
+            <span className="flex flex-col">
+                <span>{label}</span>
+                {hint && <span className="text-[10px] text-fog/70">{hint}</span>}
+            </span>
+            <span className={`relative h-4 w-8 shrink-0 rounded-full transition ${on ? "bg-moon/80" : "bg-line"}`}>
                 <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-snow transition-all ${on ? "left-[18px]" : "left-0.5"}`} />
             </span>
         </button>
@@ -83,6 +97,8 @@ export function OverlayMenu({
     statsVisible, onToggleStats,
     activeQuality, permissions,
     onApply, onDisconnect,
+    onSendKeycode,
+    inputConfig, onInputConfigChange,
 }: {
     open: boolean
     onClose: () => void
@@ -97,6 +113,11 @@ export function OverlayMenu({
     permissions: StreamPermissions | null
     onApply: (draft: QualityDraft) => void
     onDisconnect: () => void
+    /** Sends a "Send Keycode" combo (see keycodes.ts) as raw VK down/up events. */
+    onSendKeycode: (keys: number[]) => void
+    inputConfig: InputDraft
+    /** Applies a partial Input-settings patch live (StreamInput.setConfig) and persists it. */
+    onInputConfigChange: (patch: Partial<InputDraft>) => void
 }) {
     const [draft, setDraft] = useState<QualityDraft>(activeQuality)
     const hideTimerRef = useRef<number | null>(null)
@@ -182,6 +203,18 @@ export function OverlayMenu({
                     <Toggle label="Stats overlay" on={statsVisible} onChange={onToggleStats} />
                 </div>
 
+                <SectionLabel>Send keycode</SectionLabel>
+                <div className="grid grid-cols-2 gap-1.5">
+                    {KEYCODE_COMBOS.map(combo => (
+                        <button key={combo.id} type="button" onClick={() => onSendKeycode(combo.keys)}
+                            className="rounded-lg border border-line bg-panel-2/50 px-2 py-1.5 text-xs font-medium
+                                text-fog transition outline-none
+                                hover:border-moon/50 hover:bg-panel-2 hover:text-snow focus-visible:border-moon">
+                            {combo.label}
+                        </button>
+                    ))}
+                </div>
+
                 <SectionLabel>Quality</SectionLabel>
                 <div className="flex flex-col gap-4">
                     <div>
@@ -213,6 +246,12 @@ export function OverlayMenu({
                         <Segmented options={transportOptions} value={draft.transport}
                             onChange={transport => setDraft({ ...draft, transport })} />
                     </div>
+                    <Toggle label="Play audio on host" on={draft.playAudioLocal}
+                        onChange={() => setDraft({ ...draft, playAudioLocal: !draft.playAudioLocal })} />
+                    <Toggle label="HDR" on={draft.hdr}
+                        disabled={permissions != null && !permissions.allow_hdr}
+                        hint={permissions != null && !permissions.allow_hdr ? "Not allowed for this role" : undefined}
+                        onChange={() => setDraft({ ...draft, hdr: !draft.hdr })} />
 
                     {dirty && (
                         <div className="rounded-xl border border-moon/30 bg-moon/10 p-3">
@@ -226,6 +265,21 @@ export function OverlayMenu({
                             </p>
                         </div>
                     )}
+                </div>
+
+                <SectionLabel>Input</SectionLabel>
+                <div className="flex flex-col gap-4">
+                    <div>
+                        <div className="mb-1.5 text-xs text-fog">Mouse scroll</div>
+                        <Segmented options={MOUSE_SCROLL_MODE_CHOICES} value={inputConfig.mouseScrollMode}
+                            onChange={mouseScrollMode => onInputConfigChange({ mouseScrollMode })} />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <Toggle label="Invert controller A/B" on={inputConfig.invertAB}
+                            onChange={() => onInputConfigChange({ invertAB: !inputConfig.invertAB })} />
+                        <Toggle label="Invert controller X/Y" on={inputConfig.invertXY}
+                            onChange={() => onInputConfigChange({ invertXY: !inputConfig.invertXY })} />
+                    </div>
                 </div>
 
                 <SectionLabel>Connection</SectionLabel>
