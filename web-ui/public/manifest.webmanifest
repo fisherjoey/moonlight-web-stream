@@ -1,0 +1,32 @@
+{
+    "name": "Moonlight Web",
+    "short_name": "Moonlight",
+    "description": "Stream your PC games to any browser over the LAN or internet.",
+    "start_url": "/",
+    "scope": "/",
+    "display": "fullscreen",
+    "orientation": "landscape",
+    "background_color": "#07080c",
+    "theme_color": "#07080c",
+    "lang": "en",
+    "icons": [
+        {
+            "src": "/icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/icons/icon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ]
+}
