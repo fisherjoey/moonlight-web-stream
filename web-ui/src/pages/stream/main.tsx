@@ -267,7 +267,10 @@ function StreamPage() {
 
             stream.mount(container)
             container.focus()
-            await stream.startConnection()
+            // No startConnection() here: Stream starts it itself once the host's
+            // Setup message (with the ICE servers) arrives. Calling it early made
+            // every launch try WebRTC with no ICE servers, which fell back to
+            // WebSocket on "auto" and spawned a duplicate streamer.
         })()
 
         // -- Input forwarding (keyboard + mouse; gated off while UI chrome is up)
